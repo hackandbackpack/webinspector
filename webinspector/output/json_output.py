@@ -140,9 +140,17 @@ def _build_findings_array(findings: list[Finding]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
 
     for (module, finding_type), group in grouped.items():
-        # All findings in a group share the same severity (they represent the
-        # same type of issue).  Use the first finding's severity.
+        # All findings in a group share the same severity and title (they
+        # represent the same type of issue).  Use the first finding's values.
         severity = group[0].severity
+        title = group[0].title
+
+        # Collect the union of all references across findings in this group.
+        # Different targets may contribute additional reference identifiers.
+        all_references: set[str] = set()
+        for finding in group:
+            for ref in finding.references:
+                all_references.add(ref)
 
         # Build the per-target entries within this group.
         targets_list: list[dict[str, Any]] = []
@@ -150,6 +158,7 @@ def _build_findings_array(findings: list[Finding]) -> list[dict[str, Any]]:
             target_entry: dict[str, Any] = {
                 "host": finding.target.host,
                 "port": finding.target.port,
+                "scheme": finding.target.scheme,
                 "ip": finding.target.ip,
                 "detail": finding.detail,
             }
@@ -158,7 +167,9 @@ def _build_findings_array(findings: list[Finding]) -> list[dict[str, Any]]:
         entry: dict[str, Any] = {
             "module": module,
             "finding_type": finding_type,
+            "title": title,
             "severity": severity.value,
+            "references": sorted(all_references),
             "targets": targets_list,
             "count": len(targets_list),
         }
