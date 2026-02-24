@@ -18,6 +18,7 @@ Author: Red Siege Information Security
 
 from __future__ import annotations
 
+import logging
 import sys
 
 # Import the version string from the top-level package __init__.py so that
@@ -67,6 +68,19 @@ def main():
     # source required, mutually exclusive flags, module name validation).
     # If validation fails, parse_args() calls sys.exit().
     config = parse_args()
+
+    # -----------------------------------------------------------------------
+    # Step 1b: Configure logging based on verbosity flags
+    # -----------------------------------------------------------------------
+    # The scanner and modules use logging.getLogger(__name__) throughout.
+    # Wire up the root logger so those messages actually appear (or are
+    # suppressed) based on the user's -v / -q preference.
+    if config.verbose:
+        logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
+    elif config.quiet:
+        logging.basicConfig(level=logging.CRITICAL)
+    else:
+        logging.basicConfig(level=logging.WARNING, format='[%(levelname)s] %(message)s')
 
     # -----------------------------------------------------------------------
     # Step 2: Resolve targets from all input sources
