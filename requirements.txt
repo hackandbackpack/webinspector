@@ -1,0 +1,41 @@
+# requirements.txt - Python dependencies for webinspector
+#
+# This file lists all third-party packages needed to run webinspector.
+# Install with: pip install -r requirements.txt
+#
+# Version constraints use >= for minimum tested version and < for major
+# version ceiling to avoid breaking API changes.
+
+# sslyze: SSL/TLS server configuration analyzer.
+# Used by the ssl_analyzer module to scan cipher suites, certificate chains,
+# protocol versions, and known vulnerabilities (Heartbleed, etc.).
+sslyze>=6.0,<7.0
+
+# webtech: Web technology fingerprinting library.
+# Used by the tech_fingerprint module to identify CMS platforms, frameworks,
+# JavaScript libraries, and server software from HTTP responses.
+webtech>=1.3
+
+# requests: HTTP library for making web requests.
+# Used throughout the tool for fetching pages, headers, and testing CORS.
+requests>=2.31
+
+# dnspython: DNS toolkit for Python.
+# Used for DNS record lookups during target reconnaissance and validation.
+dnspython>=2.4
+
+# rich: Terminal formatting library for beautiful console output.
+# Used by the output.formatter module for colored tables, panels, and progress bars.
+rich>=13.0
+
+# lxml: Fast XML/HTML parser.
+# Used for parsing HTML responses when analyzing page content and extracting metadata.
+lxml>=4.9
+
+# netaddr: Network address manipulation library.
+# Used for IP address and CIDR range handling during target specification.
+netaddr>=0.9
+
+# pytest: Testing framework.
+# Used for running the test suite. Not needed at runtime, only for development.
+pytest>=7.0
