@@ -11,11 +11,11 @@ The registry system here provides:
     - Lazy loading so modules are only imported when first needed
 
 How it works:
-    1. Each scanner module file (e.g., ssl_analyzer.py) defines a class that
+    1. Each scanner module file (e.g., ssl_scanner.py) defines a class that
        inherits from ScanModule and implements scan().
     2. When the orchestrator calls get_all_modules() for the first time,
-       _load_modules() imports each module file and calls register_module()
-       for each scanner class.
+       _load_modules() imports each module file.  Each file calls
+       register_module() at the bottom, so the import alone is sufficient.
     3. The CLI uses get_modules_for_selection() to apply --only / --no-<module>
        flags, returning just the modules the user wants to run.
 
@@ -26,21 +26,30 @@ Key public API:
     get_module_by_name(name)    - Look up a single module by its name string
     get_modules_for_selection() - Filter modules based on CLI flags
 
-Planned scanner modules (one file each):
-    - ssl_analyzer.py      : SSL/TLS configuration analysis using sslyze
-    - cert_analyzer.py     : Certificate chain and expiry checks
-    - header_analyzer.py   : HTTP security header evaluation
-    - cookie_analyzer.py   : Cookie security attribute checking
-    - cors_analyzer.py     : CORS misconfiguration detection
-    - tech_fingerprint.py  : Technology fingerprinting using webtech
-    - disclosure.py        : Information disclosure checks (server headers, etc.)
-    - https_enforcer.py    : HTTPS enforcement and redirect checks
-    - files_analyzer.py    : robots.txt, security.txt analysis
-    - content_analyzer.py  : Content-type, X-Content-Type-Options checks
-    - dns_analyzer.py      : DNS record and configuration checks
+Scanner modules (one file each):
+    - ssl_scanner.py         : SSL/TLS configuration analysis using sslyze
+    - cert_scanner.py        : Certificate chain and expiry checks
+    - header_scanner.py      : HTTP security header evaluation
+    - cookie_scanner.py      : Cookie security attribute checking
+    - cors_scanner.py        : CORS misconfiguration detection
+    - tech_scanner.py        : Technology fingerprinting using webtech
+    - disclosure_scanner.py  : Information disclosure checks (server headers, etc.)
+    - https_scanner.py       : HTTPS enforcement and redirect checks
+    - files_scanner.py       : robots.txt, security.txt analysis
+    - content_scanner.py     : Content-type, X-Content-Type-Options checks
+    - dns_scanner.py         : DNS record and configuration checks
 
 Author: Red Siege Information Security
 """
+
+import logging
+
+# ---------------------------------------------------------------------------
+# Module-level logger
+# ---------------------------------------------------------------------------
+# Used by _load_modules() to report which modules loaded successfully and
+# which failed due to missing dependencies (e.g., sslyze not installed).
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Canonical module name list
@@ -124,20 +133,24 @@ def register_module(module_instance) -> None:
 
 def _load_modules() -> None:
     """
-    Import and instantiate all scanner modules.
+    Import all scanner modules, triggering their self-registration.
 
     Called lazily on first access to get_all_modules().  This deferred import
     pattern has two benefits:
 
-    1. Avoids circular imports — the registry module can be imported by
+    1. Avoids circular imports -- the registry module can be imported by
        scanner modules that also need to register themselves.
-    2. Graceful degradation — if a module has a missing dependency (e.g.,
+    2. Graceful degradation -- if a module has a missing dependency (e.g.,
        sslyze not installed), only that module fails to load.  The rest
        of the scanner still works.
 
-    NOTE: This is currently a no-op stub.  Individual module files will be
-    imported here in Task 19 when all modules exist.  Each import triggers
-    the module-level register_module() call at the bottom of each file.
+    Each module file calls register_module() at the bottom of the file, so
+    simply importing the file is sufficient to register the module.  Every
+    import is wrapped in try/except ImportError so that a missing third-party
+    dependency (sslyze, webtech, dnspython, etc.) only disables the one
+    module that needs it, not the entire tool.
+
+    Author: Red Siege Information Security
     """
     global _loaded
 
@@ -146,22 +159,121 @@ def _load_modules() -> None:
     _loaded = True
 
     # ---------------------------------------------------------------
-    # TODO (Task 19): Import each scanner module here.  Example:
-    #
-    #   try:
-    #       from webinspector.modules import ssl_analyzer   # noqa: F401
-    #   except ImportError as e:
-    #       logger.warning("SSL module not available: %s", e)
-    #
-    #   try:
-    #       from webinspector.modules import header_analyzer  # noqa: F401
-    #   except ImportError as e:
-    #       logger.warning("Header module not available: %s", e)
-    #
-    # Each module file registers itself via register_module() at the
-    # bottom of the file, so simply importing it is sufficient.
+    # SSL/TLS configuration analysis (requires sslyze).
+    # Checks for deprecated protocols, weak ciphers, and known
+    # vulnerabilities like Heartbleed and ROBOT.
     # ---------------------------------------------------------------
-    pass
+    try:
+        from webinspector.modules import ssl_scanner      # noqa: F401
+    except ImportError as exc:
+        logger.warning("SSL module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # Certificate chain and expiry checks (requires sslyze).
+    # Validates trust chains, expiration dates, signature algorithms,
+    # key sizes, and hostname matching.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import cert_scanner     # noqa: F401
+    except ImportError as exc:
+        logger.warning("Certificate module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # HTTP security header evaluation.
+    # Checks for CSP, HSTS, X-Frame-Options, X-Content-Type-Options,
+    # Referrer-Policy, Permissions-Policy, and more.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import header_scanner   # noqa: F401
+    except ImportError as exc:
+        logger.warning("Header module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # Cookie security attribute checking.
+    # Validates Secure, HttpOnly, SameSite, Path, and Domain settings
+    # on all cookies returned by the target.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import cookie_scanner   # noqa: F401
+    except ImportError as exc:
+        logger.warning("Cookie module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # CORS misconfiguration detection.
+    # Tests for overly permissive Access-Control-Allow-Origin headers,
+    # wildcard origins, and credential exposure.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import cors_scanner     # noqa: F401
+    except ImportError as exc:
+        logger.warning("CORS module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # Technology fingerprinting (may require webtech).
+    # Identifies server software, frameworks, CMS platforms, and other
+    # technologies from response headers and body content.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import tech_scanner     # noqa: F401
+    except ImportError as exc:
+        logger.warning("Tech fingerprinting module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # Information disclosure checks.
+    # Detects server version strings, debug headers, stack traces,
+    # and other sensitive data leaks in HTTP responses.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import disclosure_scanner  # noqa: F401
+    except ImportError as exc:
+        logger.warning("Disclosure module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # HTTPS enforcement and redirect checks.
+    # Verifies that HTTP requests are properly redirected to HTTPS,
+    # checks for mixed content issues and HSTS preloading.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import https_scanner    # noqa: F401
+    except ImportError as exc:
+        logger.warning("HTTPS enforcement module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # robots.txt, security.txt, and sitemap.xml analysis.
+    # Checks for missing security.txt, overly permissive robots.txt,
+    # and information leakage through sitemap files.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import files_scanner    # noqa: F401
+    except ImportError as exc:
+        logger.warning("Files module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # Content-type headers and sniffing protections.
+    # Validates Content-Type correctness, X-Content-Type-Options,
+    # and content sniffing attack surfaces.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import content_scanner  # noqa: F401
+    except ImportError as exc:
+        logger.warning("Content module not available: %s", exc)
+
+    # ---------------------------------------------------------------
+    # DNS record and configuration checks (requires dnspython).
+    # Examines SPF, DMARC, DNSSEC, MX records, zone transfer
+    # vulnerabilities, and other DNS security settings.
+    # ---------------------------------------------------------------
+    try:
+        from webinspector.modules import dns_scanner      # noqa: F401
+    except ImportError as exc:
+        logger.warning("DNS module not available: %s", exc)
+
+    # Log the final count of successfully loaded modules.
+    logger.info(
+        "Module registry loaded: %d of %d modules available",
+        len(_registry),
+        len(ALL_MODULE_NAMES),
+    )
 
 
 def get_all_modules() -> list:

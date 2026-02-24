@@ -134,9 +134,14 @@ class TestModuleRegistry:
     """
     Verify that the registry can store, look up, and filter scanner modules.
 
-    IMPORTANT: Each test clears _registry before and after to avoid
-    cross-contamination between tests.  The registry is a module-level
-    singleton, so mutations persist across tests unless explicitly cleaned up.
+    IMPORTANT: Each test that mutates _registry saves and restores the
+    original contents to avoid cross-contamination between tests.  The
+    registry is a module-level singleton, so mutations persist across tests
+    unless explicitly cleaned up.  We save/restore instead of just clearing
+    because real modules may have already been loaded by _load_modules()
+    and cannot be re-registered after a clear (Python caches imports).
+
+    Author: Red Siege Information Security
     """
 
     def test_get_all_modules_returns_list(self):
@@ -154,7 +159,10 @@ class TestModuleRegistry:
         Modules registered via register_module() are retrievable by name
         through get_module_by_name() and appear in get_all_modules().
         """
-        # Clear the registry to start with a known state.
+        # Save the original registry contents so we can restore them after
+        # this test.  This prevents wiping out real modules that other tests
+        # depend on (e.g., TestSSLScannerRegistration.test_module_registers).
+        saved = list(_registry)
         _registry.clear()
 
         m1 = DummyModule()
@@ -169,14 +177,17 @@ class TestModuleRegistry:
         assert get_module_by_name("dummy") is not None
         assert get_module_by_name("dummy2") is not None
 
-        # Cleanup — don't leave test modules in the registry.
+        # Restore the original registry contents.
         _registry.clear()
+        _registry.extend(saved)
 
     def test_get_modules_for_selection_only(self):
         """
         When 'only' is provided, ONLY modules whose names are in that list
         are returned.  This supports the CLI --only flag.
         """
+        # Save and restore the registry around test mutations.
+        saved = list(_registry)
         _registry.clear()
         register_module(DummyModule())
         register_module(DummyModule2())
@@ -186,13 +197,17 @@ class TestModuleRegistry:
         assert len(selected) == 1
         assert selected[0].name == "dummy"
 
+        # Restore original registry.
         _registry.clear()
+        _registry.extend(saved)
 
     def test_get_modules_for_selection_exclude(self):
         """
         When 'exclude' is provided, all modules EXCEPT those named are
         returned.  This supports the CLI --no-<module> flags.
         """
+        # Save and restore the registry around test mutations.
+        saved = list(_registry)
         _registry.clear()
         register_module(DummyModule())
         register_module(DummyModule2())
@@ -202,7 +217,9 @@ class TestModuleRegistry:
         assert len(selected) == 1
         assert selected[0].name == "dummy2"
 
+        # Restore original registry.
         _registry.clear()
+        _registry.extend(saved)
 
     def test_all_module_names_is_list(self):
         """

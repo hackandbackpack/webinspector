@@ -3,8 +3,8 @@ webinspector.core.scanner - Main scanning orchestrator for webinspector.
 
 This module implements the WebInspectorScanner class, which is the heart of
 the scanning pipeline.  It coordinates DNS pre-resolution, HTTP fetching,
-module execution, and (in future tasks) sslyze TLS scanning across multiple
-targets using concurrent threads.
+module execution, and sslyze TLS scanning across multiple targets using
+concurrent threads.
 
 The orchestrator's job is to:
     1. Resolve DNS for all targets (forward lookup for hostnames, reverse
@@ -13,8 +13,8 @@ The orchestrator's job is to:
        all HTTP-based scanner modules to avoid duplicate requests.
     3. Run all applicable scanner modules against each target, collecting
        Finding objects from each module.
-    4. (Future) Run sslyze separately for SSL/cert modules that need raw
-       TLS socket access instead of HTTP responses.
+    4. Run SSL/cert modules sequentially (they manage their own sslyze
+       Scanner instances internally for raw TLS socket access).
     5. Aggregate results into a ScanSummary and return them to the caller.
 
 Concurrency model:
@@ -176,8 +176,8 @@ class WebInspectorScanner:
 
         This is the main entry point for a scan.  It performs DNS pre-resolution,
         splits modules into HTTP-based and SSL-based groups, runs the HTTP
-        scanning phase with a thread pool, runs the sslyze phase (stub for now),
-        and aggregates results into a ScanSummary.
+        scanning phase with a thread pool, runs the SSL/cert scanning phase
+        sequentially, and aggregates results into a ScanSummary.
 
         Args:
             targets: List of Target objects to scan.
@@ -622,7 +622,7 @@ class WebInspectorScanner:
         return findings, None
 
     # -----------------------------------------------------------------
-    # sslyze scanning (stub for future Tasks 8-9)
+    # SSL/cert scanning phase
     # -----------------------------------------------------------------
 
     def _scan_sslyze(
@@ -631,33 +631,39 @@ class WebInspectorScanner:
         ssl_modules: list[ScanModule],
     ) -> list[Finding]:
         """
-        Run sslyze Scanner for SSL/cert modules.
+        Run SSL/cert modules against all HTTPS targets.
 
-        This method handles the separate sslyze scanning phase for modules
-        that need raw TLS socket connections (ssl_analyzer, cert_analyzer)
-        instead of HTTP responses.
+        This method handles the separate scanning phase for modules that need
+        raw TLS socket connections (ssl_scanner, cert_scanner) instead of
+        HTTP responses.
 
-        sslyze has its own internal thread pool and connection management,
-        so we don't wrap it in our ThreadPoolExecutor.  Instead, we:
-            1. Filter targets to HTTPS-only (SSL scanning on HTTP is meaningless)
-            2. Queue all HTTPS targets as sslyze ServerScanRequests
-            3. Collect results via sslyze's scanner.get_results() generator
-            4. Pass each result to the SSL/cert modules for analysis
+        Each SSL/cert module creates its own internal sslyze Scanner instance
+        and manages its own thread pool, so we do NOT wrap these calls in our
+        ThreadPoolExecutor.  Instead, we invoke each module's scan() method
+        sequentially from the main thread for each HTTPS target.
 
-        NOTE: This is currently a stub.  The full sslyze integration will be
-        implemented in Tasks 8 (SSL scanner) and 9 (Certificate scanner).
-        The structure is in place so those tasks just need to fill in the
-        sslyze-specific code.
+        This sequential approach avoids two problems:
+            1. sslyze already manages its own concurrency internally, so
+               wrapping it in another thread pool would be wasteful.
+            2. Running multiple sslyze Scanner instances in parallel could
+               cause port conflicts or excessive connections to the target.
+
+        Per-target and per-module error handling ensures that one failure
+        does not prevent other modules or targets from being scanned.
 
         Args:
             targets:     All targets (will be filtered to HTTPS only).
-            ssl_modules: The SSL/cert ScanModule instances.
+            ssl_modules: The SSL/cert ScanModule instances (e.g., ssl_scanner,
+                         cert_scanner).
 
         Returns:
-            List of Finding objects from SSL/cert analysis.
-            Currently returns an empty list (stub).
+            List of Finding objects from SSL/cert analysis across all
+            targets and modules.
+
+        Author: Red Siege Information Security
         """
-        # Filter to HTTPS targets only — SSL scanning on HTTP makes no sense.
+        # Filter to HTTPS targets only -- SSL scanning on plain HTTP is
+        # meaningless because there is no TLS handshake to analyse.
         https_targets = [t for t in targets if t.scheme == "https"]
 
         if not https_targets:
@@ -665,54 +671,54 @@ class WebInspectorScanner:
             return []
 
         logger.info(
-            "SSL/cert scanning: %d HTTPS targets, %d modules (stub — not yet implemented)",
+            "SSL/cert scanning: %d HTTPS targets, %d modules",
             len(https_targets),
             len(ssl_modules),
         )
 
-        # ---------------------------------------------------------------
-        # TODO (Tasks 8-9): Implement sslyze integration here.
-        #
-        # The implementation will look approximately like this:
-        #
-        #   try:
-        #       from sslyze import (
-        #           Scanner,
-        #           ServerScanRequest,
-        #           ServerNetworkLocation,
-        #           ScanCommand,
-        #       )
-        #   except ImportError:
-        #       logger.warning("sslyze not installed — skipping SSL/cert scanning")
-        #       return []
-        #
-        #   scanner = Scanner()
-        #   for target in https_targets:
-        #       location = ServerNetworkLocation(
-        #           hostname=target.host, port=target.port
-        #       )
-        #       request = ServerScanRequest(
-        #           server_location=location,
-        #           scan_commands={
-        #               ScanCommand.SSL_2_0_CIPHER_SUITES,
-        #               ScanCommand.SSL_3_0_CIPHER_SUITES,
-        #               ScanCommand.TLS_1_0_CIPHER_SUITES,
-        #               ScanCommand.TLS_1_1_CIPHER_SUITES,
-        #               ScanCommand.TLS_1_2_CIPHER_SUITES,
-        #               ScanCommand.TLS_1_3_CIPHER_SUITES,
-        #               ScanCommand.CERTIFICATE_INFO,
-        #               ScanCommand.HEARTBLEED,
-        #           },
-        #       )
-        #       scanner.queue_scans([request])
-        #
-        #   findings = []
-        #   for result in scanner.get_results():
-        #       for module in ssl_modules:
-        #           if module.accepts_target(target):
-        #               findings.extend(module.scan(target, sslyze_result=result))
-        #
-        #   return findings
-        # ---------------------------------------------------------------
+        findings: list[Finding] = []
 
-        return []
+        # Iterate over each HTTPS target and run all SSL/cert modules
+        # sequentially.  Each module's scan() method handles its own
+        # sslyze connection and analysis internally.
+        for target in https_targets:
+            for module in ssl_modules:
+                # Check if this module wants to scan this target.
+                # The SSL module's accepts_target() returns False for
+                # non-HTTPS targets, but we already filtered above.
+                # This check is kept for consistency with the HTTP path.
+                if not module.accepts_target(target):
+                    logger.debug(
+                        "SSL module '%s' skipped target %s (accepts_target=False)",
+                        module.name, target.display,
+                    )
+                    continue
+
+                try:
+                    # Each SSL/cert module creates its own sslyze Scanner
+                    # internally, so we just pass the target and None for
+                    # the HTTP response (SSL modules don't use it).
+                    module_findings = module.scan(target, http_response=None)
+                    findings.extend(module_findings)
+
+                    if module_findings:
+                        logger.debug(
+                            "SSL module '%s' found %d findings for %s",
+                            module.name, len(module_findings), target.display,
+                        )
+                except Exception as exc:
+                    # Per-module error handling: log and continue.
+                    # One broken module should never crash the entire scan.
+                    # Common causes: sslyze not installed, connection refused,
+                    # TLS handshake timeout, etc.
+                    logger.warning(
+                        "SSL module '%s' raised an exception for %s: %s",
+                        module.name, target.display, exc,
+                    )
+
+        logger.info(
+            "SSL/cert scanning complete: %d findings from %d targets",
+            len(findings), len(https_targets),
+        )
+
+        return findings
