@@ -565,6 +565,16 @@ class WebInspectorScanner:
         """
         findings: list[Finding] = []
 
+        # --- Step 0: Optional delay between requests ---
+        # If a delay is configured, sleep before fetching to avoid triggering
+        # rate limiters on the target host during pentest engagements.
+        if self.config.delay > 0:
+            logger.debug(
+                "Sleeping %.2fs before request to %s",
+                self.config.delay, target.display,
+            )
+            time.sleep(self.config.delay)
+
         # --- Step 1: Fetch the HTTP response ---
         # One GET request per target, shared across all modules.
         logger.debug("Fetching %s", target.url)

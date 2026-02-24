@@ -87,6 +87,8 @@ class ScanConfig:
                           or None for direct connections.
         output_file     : Path for text output from -o, or None for stdout only.
         json_file       : Path for JSON output from --json, or None.
+        delay           : Delay in seconds between requests to the same host
+                          (default 0.0). Useful to avoid triggering rate limiting.
         verbose         : True if -v was specified (show extra diagnostic output).
         quiet           : True if -q was specified (suppress everything except findings).
     """
@@ -102,6 +104,7 @@ class ScanConfig:
     proxy: str | None = None
     output_file: str | None = None
     json_file: str | None = None
+    delay: float = 0.0
     verbose: bool = False
     quiet: bool = False
 
@@ -317,6 +320,19 @@ def _build_parser() -> argparse.ArgumentParser:
         default=10,
         metavar="N",
         help="Max concurrent scan threads (default: 10). Example: --threads 20",
+    )
+
+    # --delay: Delay between requests to the same host.
+    # Default is 0 seconds (no delay). Useful during pentest engagements to
+    # avoid triggering rate limiting or IDS/IPS alerts.
+    # Example: --delay 0.5
+    tuning_group.add_argument(
+        "--delay",
+        dest="delay",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="Delay in seconds between requests to the same host (default: 0). Example: --delay 0.5",
     )
 
     # --proxy: Route all traffic through a proxy.
@@ -569,6 +585,7 @@ def parse_args(argv: list[str] | None = None) -> ScanConfig:
         exclude_modules=exclude_modules,
         timeout=args.timeout,
         threads=args.threads,
+        delay=args.delay,
         proxy=args.proxy,
         output_file=args.output_file,
         json_file=args.json_file,

@@ -195,6 +195,28 @@ class TestTimeoutAndThreads:
 
 
 # ---------------------------------------------------------------------------
+# Delay tests
+# ---------------------------------------------------------------------------
+
+class TestDelay:
+    """Tests for the --delay argument."""
+
+    def test_delay_custom(self):
+        """
+        --delay 0.5 should set the delay field to 0.5.
+        """
+        config = parse_args(["-t", "example.com", "--delay", "0.5"])
+        assert config.delay == 0.5
+
+    def test_delay_default(self):
+        """
+        When --delay is not specified, it should default to 0.0 (no delay).
+        """
+        config = parse_args(["-t", "example.com"])
+        assert config.delay == 0.0
+
+
+# ---------------------------------------------------------------------------
 # Proxy tests
 # ---------------------------------------------------------------------------
 
