@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!--
+    Sample nmap XML output for webinspector test suite.
+
+    This file simulates the XML output that nmap produces with the -oX flag.
+    It covers the following test scenarios:
+
+    Host 10.0.0.1:
+        - Port 443 open, service "https"  -> should be extracted as HTTPS target
+
+    Host 10.0.0.2:
+        - Port 80 open, service "http"    -> should be extracted as HTTP target
+        - Port 8443 open, service "https" with tunnel="ssl"
+                                           -> should be extracted as HTTPS target
+
+    Host 10.0.0.3:
+        - Port 22 open, service "ssh"     -> should be EXCLUDED (not a web service)
+
+    Host 10.0.0.4:
+        - Port 443 state="closed"         -> should be EXCLUDED (port not open)
+-->
+<nmaprun scanner="nmap" args="nmap -sV -oX sample.xml 10.0.0.0/24"
+         start="1700000000" startstr="Tue Nov 14 12:00:00 2023"
+         version="7.94" xmloutputversion="1.05">
+
+    <!-- Host 1: Standard HTTPS service on port 443 (open) -->
+    <host starttime="1700000001" endtime="1700000010">
+        <status state="up" reason="arp-response" />
+        <address addr="10.0.0.1" addrtype="ipv4" />
+        <hostnames>
+            <hostname name="web1.corp.local" type="PTR" />
+        </hostnames>
+        <ports>
+            <port protocol="tcp" portid="443">
+                <state state="open" reason="syn-ack" />
+                <service name="https" method="probed" conf="10" />
+            </port>
+        </ports>
+    </host>
+
+    <!-- Host 2: HTTP on port 80 and SSL-tunneled HTTPS on port 8443 -->
+    <host starttime="1700000002" endtime="1700000011">
+        <status state="up" reason="arp-response" />
+        <address addr="10.0.0.2" addrtype="ipv4" />
+        <hostnames />
+        <ports>
+            <port protocol="tcp" portid="80">
+                <state state="open" reason="syn-ack" />
+                <service name="http" method="probed" conf="10" />
+            </port>
+            <port protocol="tcp" portid="8443">
+                <state state="open" reason="syn-ack" />
+                <service name="https" tunnel="ssl" method="probed" conf="10" />
+            </port>
+        </ports>
+    </host>
+
+    <!-- Host 3: SSH only — NOT a web service, should be excluded -->
+    <host starttime="1700000003" endtime="1700000012">
+        <status state="up" reason="arp-response" />
+        <address addr="10.0.0.3" addrtype="ipv4" />
+        <hostnames />
+        <ports>
+            <port protocol="tcp" portid="22">
+                <state state="open" reason="syn-ack" />
+                <service name="ssh" method="probed" conf="10" />
+            </port>
+        </ports>
+    </host>
+
+    <!-- Host 4: Port 443 is CLOSED — should be excluded -->
+    <host starttime="1700000004" endtime="1700000013">
+        <status state="up" reason="arp-response" />
+        <address addr="10.0.0.4" addrtype="ipv4" />
+        <hostnames />
+        <ports>
+            <port protocol="tcp" portid="443">
+                <state state="closed" reason="reset" />
+                <service name="https" method="table" conf="3" />
+            </port>
+        </ports>
+    </host>
+
+</nmaprun>
