@@ -304,6 +304,78 @@ class TestVerbosity:
 
 
 # ---------------------------------------------------------------------------
+# Input validation tests
+# ---------------------------------------------------------------------------
+
+class TestModuleNameValidation:
+    """Tests that --only and --no reject unknown module names."""
+
+    def test_only_unknown_module_raises_error(self):
+        """
+        --only nonexistent_module should raise SystemExit because the module
+        name is not in ALL_MODULE_NAMES.
+        """
+        with pytest.raises(SystemExit):
+            parse_args(["-t", "example.com", "--only", "nonexistent_module"])
+
+    def test_no_unknown_module_raises_error(self):
+        """
+        --no nonexistent_module should raise SystemExit because the module
+        name is not in ALL_MODULE_NAMES.
+        """
+        with pytest.raises(SystemExit):
+            parse_args(["-t", "example.com", "--no", "nonexistent_module"])
+
+
+class TestTimeoutAndThreadsValidation:
+    """Tests that --timeout and --threads reject non-positive values."""
+
+    def test_timeout_zero_raises_error(self):
+        """
+        --timeout 0 should raise SystemExit because timeout must be
+        a positive integer (> 0).
+        """
+        with pytest.raises(SystemExit):
+            parse_args(["-t", "example.com", "--timeout", "0"])
+
+    def test_threads_negative_raises_error(self):
+        """
+        --threads -1 should raise SystemExit because threads must be
+        a positive integer (> 0).
+        """
+        with pytest.raises(SystemExit):
+            parse_args(["-t", "example.com", "--threads", "-1"])
+
+
+class TestPortValidation:
+    """Tests that -p rejects port numbers outside the valid range 1-65535."""
+
+    def test_port_zero_raises_error(self):
+        """
+        -p 0 should raise SystemExit because port 0 is reserved and
+        falls outside the valid TCP port range (1-65535).
+        """
+        with pytest.raises(SystemExit):
+            parse_args(["-t", "example.com", "-p", "0"])
+
+    def test_port_above_max_raises_error(self):
+        """
+        -p 99999 should raise SystemExit because 99999 exceeds the
+        maximum TCP port number (65535).
+        """
+        with pytest.raises(SystemExit):
+            parse_args(["-t", "example.com", "-p", "99999"])
+
+    def test_valid_ports_accepted(self):
+        """
+        Ports 1, 443, and 65535 are all within the valid TCP range
+        (1-65535) and should be accepted without error.
+        """
+        config = parse_args(["-t", "example.com", "-p", "1", "443", "65535"])
+        assert config.ports == [1, 443, 65535]
+
+
+# ---------------------------------------------------------------------------
 # ScanConfig dataclass tests
 # ---------------------------------------------------------------------------
 

@@ -500,6 +500,61 @@ def parse_args(argv: list[str] | None = None) -> ScanConfig:
         exclude_modules = _split_module_list(args.exclude_modules)
 
     # -----------------------------------------------------------------------
+    # Validation: Module names must be recognized
+    # -----------------------------------------------------------------------
+    # If the user specified --only or --no with module names, every name must
+    # exist in ALL_MODULE_NAMES. Typos like "--only sll" (instead of "ssl")
+    # would silently scan nothing useful, so we catch them early with a clear
+    # error listing both the unknown names and the valid options.
+
+    if only_modules is not None:
+        unknown = [m for m in only_modules if m not in ALL_MODULE_NAMES]
+        if unknown:
+            parser.error(
+                f"Unknown module(s) in --only: {', '.join(unknown)}. "
+                f"Available modules: {', '.join(ALL_MODULE_NAMES)}"
+            )
+
+    if exclude_modules is not None:
+        unknown = [m for m in exclude_modules if m not in ALL_MODULE_NAMES]
+        if unknown:
+            parser.error(
+                f"Unknown module(s) in --no: {', '.join(unknown)}. "
+                f"Available modules: {', '.join(ALL_MODULE_NAMES)}"
+            )
+
+    # -----------------------------------------------------------------------
+    # Validation: Timeout and threads must be positive
+    # -----------------------------------------------------------------------
+    # A timeout of 0 means "no wait" and negative threads make no sense.
+    # Both values must be positive integers (> 0) to produce a meaningful scan.
+
+    if args.timeout <= 0:
+        parser.error(
+            f"--timeout must be a positive integer, got {args.timeout}."
+        )
+
+    if args.threads <= 0:
+        parser.error(
+            f"--threads must be a positive integer, got {args.threads}."
+        )
+
+    # -----------------------------------------------------------------------
+    # Validation: Port numbers must be in valid TCP range
+    # -----------------------------------------------------------------------
+    # TCP port numbers are unsigned 16-bit integers: 1-65535. Port 0 is
+    # reserved and not usable for connections. Values above 65535 exceed
+    # the protocol's range entirely.
+
+    if args.ports:
+        invalid_ports = [p for p in args.ports if p < 1 or p > 65535]
+        if invalid_ports:
+            parser.error(
+                f"Port(s) out of range (must be 1-65535): "
+                f"{', '.join(str(p) for p in invalid_ports)}"
+            )
+
+    # -----------------------------------------------------------------------
     # Build and return the ScanConfig
     # -----------------------------------------------------------------------
     # Convert the argparse Namespace into our typed dataclass. This gives
