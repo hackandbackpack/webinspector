@@ -594,9 +594,13 @@ class TestJsonRenderer:
             for entry in data["findings"]:
                 assert "module" in entry
                 assert "finding_type" in entry
+                assert "title" in entry
                 assert "severity" in entry
+                assert "references" in entry
                 assert "targets" in entry
                 assert "count" in entry
+                assert isinstance(entry["title"], str)
+                assert isinstance(entry["references"], list)
                 assert isinstance(entry["targets"], list)
                 assert entry["count"] == len(entry["targets"])
         finally:
@@ -638,9 +642,55 @@ class TestJsonRenderer:
         finally:
             os.unlink(filepath)
 
+    def test_json_findings_have_title_and_references(self, sample_findings, sample_summary):
+        """
+        Each finding group should include a 'title' (human-readable name) and
+        'references' (union of CWE/OWASP identifiers from all findings in the group).
+        """
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
+            filepath = f.name
+
+        try:
+            write_json_report(
+                filepath,
+                sample_findings,
+                sample_summary,
+                modules_run=["ssl", "headers"],
+                version="1.0.0",
+                targets_scanned=3,
+            )
+            with open(filepath, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+
+            # Find the "deprecated_protocols" entry which has references=["CWE-326"].
+            deprecated = None
+            for entry in data["findings"]:
+                if entry["finding_type"] == "deprecated_protocols":
+                    deprecated = entry
+                    break
+
+            assert deprecated is not None, "deprecated_protocols finding not found"
+            assert deprecated["title"] == "Deprecated Protocols"
+            assert deprecated["references"] == ["CWE-326"]
+
+            # Find the "weak_ciphers" entry which has no references.
+            weak = None
+            for entry in data["findings"]:
+                if entry["finding_type"] == "weak_ciphers":
+                    weak = entry
+                    break
+
+            assert weak is not None, "weak_ciphers finding not found"
+            assert weak["title"] == "Weak Ciphers"
+            assert weak["references"] == []
+        finally:
+            os.unlink(filepath)
+
     def test_json_finding_target_has_required_fields(self, sample_findings, sample_summary):
         """
-        Each target within a finding group should have host, port, ip, and detail.
+        Each target within a finding group should have host, port, scheme, ip, and detail.
         """
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False
@@ -665,7 +715,9 @@ class TestJsonRenderer:
 
             assert "host" in first_target
             assert "port" in first_target
+            assert "scheme" in first_target
             assert "detail" in first_target
+            assert first_target["scheme"] in ("http", "https")
         finally:
             os.unlink(filepath)
 

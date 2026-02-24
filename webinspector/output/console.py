@@ -102,10 +102,13 @@ def _get_console(file: StringIO | None = None) -> "Console":
         # injects ANSI codes into strings like "47.2" or "Count: 2", which
         # breaks substring matching in tests and produces inconsistent output.
         return Console(file=file, force_terminal=True, width=120, highlight=False)
-    # Fallback if Rich is not available — return a basic Console-like object.
-    # This path is unlikely in production (Rich is a dependency) but keeps
-    # the module importable for testing without Rich.
-    return Console(file=file, width=120, highlight=False)
+    # Rich is not installed — raise a clear error so the user knows how to fix it.
+    # Console is undefined when RICH_AVAILABLE is False, so we cannot fall back
+    # to a plain Console call here.
+    raise ImportError(
+        "The 'rich' library is required for console output but is not installed. "
+        "Install it with: pip install rich"
+    )
 
 
 def _severity_label(severity: Severity) -> str:
