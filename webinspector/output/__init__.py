@@ -2,12 +2,13 @@
 webinspector.output - Output formatting and report generation.
 
 This sub-package handles all output rendering, including terminal-friendly
-rich console output and structured data export (JSON, etc.) suitable for
-inclusion in penetration testing reports.
+rich console output, plain text file reports, and structured data export
+(JSON) suitable for inclusion in penetration testing reports.
 
-Planned modules:
-    - formatter.py: Rich console output formatting using the rich library
-    - json_output.py: JSON export for structured report data
+Modules:
+    - console.py     : Rich-based terminal output with colored severity indicators
+    - text.py        : Plain text file output (no ANSI escape codes)
+    - json_output.py : Structured JSON export matching the design doc schema
 
 Author: Red Siege Information Security
 """
