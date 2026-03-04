@@ -631,90 +631,78 @@ class WebInspectorScanner:
         ssl_modules: list[ScanModule],
     ) -> list[Finding]:
         """
-        Run SSL/cert modules against all HTTPS targets.
+        Run SSL/cert modules against all HTTPS targets with per-target timeouts.
 
-        This method handles the separate scanning phase for modules that need
-        raw TLS socket connections (ssl_scanner, cert_scanner) instead of
-        HTTP responses.
-
-        Each SSL/cert module creates its own internal sslyze Scanner instance
-        and manages its own thread pool, so we do NOT wrap these calls in our
-        ThreadPoolExecutor.  Instead, we invoke each module's scan() method
-        sequentially from the main thread for each HTTPS target.
-
-        This sequential approach avoids two problems:
-            1. sslyze already manages its own concurrency internally, so
-               wrapping it in another thread pool would be wasteful.
-            2. Running multiple sslyze Scanner instances in parallel could
-               cause port conflicts or excessive connections to the target.
-
-        Per-target and per-module error handling ensures that one failure
-        does not prevent other modules or targets from being scanned.
+        Each SSL/cert module creates its own internal sslyze Scanner instance.
+        To prevent unresponsive hosts from hanging the entire scan, each
+        target+module combination is run in a thread with a timeout of
+        (config.timeout * 6) seconds.  This gives sslyze enough time for
+        its TLS handshakes and analysis while preventing indefinite stalls.
 
         Args:
             targets:     All targets (will be filtered to HTTPS only).
-            ssl_modules: The SSL/cert ScanModule instances (e.g., ssl_scanner,
-                         cert_scanner).
+            ssl_modules: The SSL/cert ScanModule instances.
 
         Returns:
-            List of Finding objects from SSL/cert analysis across all
-            targets and modules.
-
-        Author: Red Siege Information Security
+            List of Finding objects from SSL/cert analysis.
         """
-        # Filter to HTTPS targets only -- SSL scanning on plain HTTP is
-        # meaningless because there is no TLS handshake to analyse.
         https_targets = [t for t in targets if t.scheme == "https"]
 
         if not https_targets:
             logger.info("No HTTPS targets for SSL/cert scanning")
             return []
 
-        logger.info(
-            "SSL/cert scanning: %d HTTPS targets, %d modules",
-            len(https_targets),
-            len(ssl_modules),
-        )
+        if not self.config.quiet:
+            print(
+                f"\n[*] SSL/cert scanning: {len(https_targets)} HTTPS targets, "
+                f"{len(ssl_modules)} modules"
+            )
 
         findings: list[Finding] = []
+        # Give sslyze 6x the HTTP timeout per target+module to account for
+        # multiple TLS handshakes and cipher enumeration.
+        sslyze_timeout = self.config.timeout * 6
+        completed = 0
+        total = len(https_targets)
 
-        # Iterate over each HTTPS target and run all SSL/cert modules
-        # sequentially.  Each module's scan() method handles its own
-        # sslyze connection and analysis internally.
         for target in https_targets:
             for module in ssl_modules:
-                # Check if this module wants to scan this target.
-                # The SSL module's accepts_target() returns False for
-                # non-HTTPS targets, but we already filtered above.
-                # This check is kept for consistency with the HTTP path.
                 if not module.accepts_target(target):
-                    logger.debug(
-                        "SSL module '%s' skipped target %s (accepts_target=False)",
-                        module.name, target.display,
-                    )
                     continue
 
                 try:
-                    # Each SSL/cert module creates its own sslyze Scanner
-                    # internally, so we just pass the target and None for
-                    # the HTTP response (SSL modules don't use it).
-                    module_findings = module.scan(target, http_response=None)
-                    findings.extend(module_findings)
-
-                    if module_findings:
-                        logger.debug(
-                            "SSL module '%s' found %d findings for %s",
-                            module.name, len(module_findings), target.display,
+                    # Run the sslyze scan in a thread with a timeout so
+                    # unresponsive hosts don't hang the entire scan.
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            module.scan, target, None
                         )
-                except Exception as exc:
-                    # Per-module error handling: log and continue.
-                    # One broken module should never crash the entire scan.
-                    # Common causes: sslyze not installed, connection refused,
-                    # TLS handshake timeout, etc.
+                        module_findings = future.result(
+                            timeout=sslyze_timeout
+                        )
+                        findings.extend(module_findings)
+
+                except TimeoutError:
                     logger.warning(
-                        "SSL module '%s' raised an exception for %s: %s",
+                        "SSL module '%s' timed out for %s after %ds",
+                        module.name, target.display, sslyze_timeout,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "SSL module '%s' failed for %s: %s",
                         module.name, target.display, exc,
                     )
+
+            completed += 1
+            if not self.config.quiet:
+                print(
+                    f"\r[*] SSL/cert scanned {completed}/{total} targets",
+                    end="",
+                    flush=True,
+                )
+
+        if not self.config.quiet:
+            print()
 
         logger.info(
             "SSL/cert scanning complete: %d findings from %d targets",

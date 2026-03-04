@@ -60,6 +60,13 @@ logger = logging.getLogger(__name__)
 # Without this, every single HTTPS request would print a warning line.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Suppress urllib3 retry warnings that flood output during scans.
+# When targets are unreachable (connection refused, SSL handshake failures,
+# timeouts), the retry adapter logs a WARNING for every single retry attempt.
+# With 3 retries per target and dozens of targets, this creates hundreds of
+# noisy warning lines that drown out actual findings.
+logging.getLogger("urllib3.util.retry").setLevel(logging.ERROR)
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -81,9 +88,9 @@ DEFAULT_USER_AGENT = (
 DEFAULT_TIMEOUT = 10
 
 # Default maximum number of retries for transient failures.
-# 3 retries with exponential backoff (0.5s, 1s, 2s) gives servers a
-# fair chance to respond before we give up.
-DEFAULT_MAX_RETRIES = 3
+# 1 retry keeps the scan moving quickly when hitting many unreachable
+# hosts while still catching transient 502/503/504 errors.
+DEFAULT_MAX_RETRIES = 1
 
 # HTTP status codes that should trigger an automatic retry.
 # These are all server-side errors that may be transient:
