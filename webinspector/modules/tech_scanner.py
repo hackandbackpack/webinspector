@@ -195,10 +195,11 @@ class TechScanner(ScanModule):
 
         except Exception as e:
             # Catch-all for webtech errors: connection refused, parse errors,
-            # timeout, etc.  We log the error and return empty findings
-            # so the rest of the scan continues.
-            logger.error(
-                "webtech scan failed for %s: %s", target.hostport, e
+            # timeout, Content-Type mismatch, etc.  These are expected for
+            # non-HTML services (APIs, raw TCP, etc.) so we log at DEBUG
+            # to avoid flooding the output during scans with many ports.
+            logger.debug(
+                "webtech scan skipped for %s: %s", target.hostport, e
             )
 
         return findings
