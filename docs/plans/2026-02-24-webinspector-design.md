@@ -1,7 +1,7 @@
 # WebInspector Design Document
 
 **Date:** 2026-02-24
-**Author:** Jason Downey / Claude
+**Author:** Jason Downey
 **Status:** Approved
 
 ## Overview

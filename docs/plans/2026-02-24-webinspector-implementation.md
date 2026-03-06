@@ -1,7 +1,5 @@
 # WebInspector Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Build a production-ready Python CLI tool that combines SSL/TLS scanning, HTTP security header analysis, cookie checks, CORS detection, tech fingerprinting, and passive web app analysis into a single tool for penetration testing engagements.
 
 **Architecture:** Modular scanner with pluggable modules, ThreadPoolExecutor for HTTP concurrency, sslyze's own Scanner for TLS concurrency. Shared HTTP response per target avoids duplicate requests. Results aggregated by finding type for report-ready output.
